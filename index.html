@@ -45,11 +45,6 @@ h1 {
     min-width: 80px;
 }
 
-.levels button:hover {
-    transform: scale(1.05);
-    background: #f0f0f0;
-}
-
 .levels button:active {
     transform: scale(0.95);
 }
@@ -78,9 +73,11 @@ h1 {
     border-radius: 20px;
     cursor: pointer;
     box-shadow: 0 6px 12px rgba(0,0,0,0.2);
-    transition: transform 0.2s;
+    transition: transform 0.2s, opacity 0.2s;
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .color-box:active {
@@ -88,10 +85,8 @@ h1 {
 }
 
 .color-box.dragging {
-    opacity: 0.7;
+    opacity: 0.5;
     transform: scale(0.9);
-    position: relative;
-    z-index: 1000;
 }
 
 .drop-zone {
@@ -111,6 +106,8 @@ h1 {
     word-break: break-word;
     touch-action: none;
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .drop-zone.filled {
@@ -123,6 +120,25 @@ h1 {
     transform: scale(1.05);
     border-color: #4CAF50;
     background: rgba(76, 175, 80, 0.1);
+}
+
+.drop-zone.wrong-drop {
+    border-color: #FF4444;
+    background: rgba(255, 68, 68, 0.1);
+    transform: scale(0.95);
+}
+
+/* Elemento fantasma per il drag */
+.drag-ghost {
+    position: fixed;
+    width: min(80px, 20vw);
+    height: min(80px, 20vw);
+    border-radius: 20px;
+    pointer-events: none;
+    z-index: 10000;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    transform: translate(-50%, -50%);
+    opacity: 0.8;
 }
 
 #message {
@@ -146,14 +162,14 @@ canvas {
     z-index: 9999;
 }
 
-/* Istruzioni per il drag su mobile */
 .drag-instruction {
     background: rgba(255,255,255,0.5);
     padding: 8px 15px;
     border-radius: 30px;
     font-size: 14px;
-    margin-bottom: 10px;
+    margin: 10px;
     display: inline-block;
+    backdrop-filter: blur(5px);
 }
 
 @media (max-width: 600px) {
@@ -193,6 +209,9 @@ canvas {
 <div id="stars"></div>
 
 <canvas id="confetti"></canvas>
+
+<!-- Elemento fantasma per il drag -->
+<div id="dragGhost" class="drag-ghost" style="display: none;"></div>
 
 <script>
 const levels = {
@@ -247,15 +266,19 @@ let total = 0;
 let correct = 0;
 let errors = 0;
 let draggedElement = null;
-let touchOffset = { x: 0, y: 0 };
 let isDragging = false;
+let currentDropZone = null;
+let ghost = document.getElementById('dragGhost');
+let startX, startY;
 
 function startGame(level) {
-    // Pulisci tutto
     document.getElementById("colors").innerHTML = "";
     document.getElementById("names").innerHTML = "";
     document.getElementById("message").innerText = "";
     document.getElementById("stars").innerText = "";
+    
+    // Nascondi il fantasma
+    ghost.style.display = 'none';
 
     const selected = levels[level];
     total = selected.length;
@@ -265,13 +288,13 @@ function startGame(level) {
     // Mescola le parole
     const shuffled = [...selected].sort(() => Math.random() - 0.5);
 
-    // Crea i colori (in ordine originale)
+    // Crea i colori
     selected.forEach(color => {
         const box = createColorElement(color);
         document.getElementById("colors").appendChild(box);
     });
 
-    // Crea le zone di drop (in ordine mescolato)
+    // Crea le zone di drop
     shuffled.forEach(color => {
         const drop = createDropZone(color);
         document.getElementById("names").appendChild(drop);
@@ -286,18 +309,13 @@ function createColorElement(color) {
     box.dataset.color = color.value;
 
     // Eventi mouse
-    box.addEventListener("dragstart", (e) => {
-        e.preventDefault();
-        return false;
-    });
-    
     box.addEventListener("mousedown", startDrag);
+    box.addEventListener("mouseup", endDrag);
     
     // Eventi touch
-    box.addEventListener("touchstart", handleTouchStart, { passive: false });
-    box.addEventListener("touchmove", handleTouchMove, { passive: false });
-    box.addEventListener("touchend", handleTouchEnd);
-    box.addEventListener("touchcancel", handleTouchEnd);
+    box.addEventListener("touchstart", startDrag, { passive: false });
+    box.addEventListener("touchend", endDrag, { passive: false });
+    box.addEventListener("touchcancel", endDrag, { passive: false });
 
     return box;
 }
@@ -307,17 +325,9 @@ function createDropZone(color) {
     drop.classList.add("drop-zone");
     drop.innerText = color.name;
     drop.dataset.name = color.name;
-
-    // Eventi mouse
-    drop.addEventListener("dragover", (e) => e.preventDefault());
-    drop.addEventListener("drop", (e) => {
-        e.preventDefault();
-        handleDrop(drop);
-    });
     
+    // Eventi mouse/touch per il drop
     drop.addEventListener("mouseup", () => handleDrop(drop));
-    
-    // Eventi touch
     drop.addEventListener("touchend", (e) => {
         e.preventDefault();
         handleDrop(drop);
@@ -326,135 +336,158 @@ function createDropZone(color) {
     return drop;
 }
 
-// Gestione drag con mouse
 function startDrag(e) {
     e.preventDefault();
-    if (isDragging) return;
+    
+    if (e.type === 'mousedown') {
+        startX = e.clientX;
+        startY = e.clientY;
+    } else {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+    }
     
     draggedElement = this;
-    this.classList.add("dragging");
-    isDragging = true;
-}
-
-// Gestione touch
-function handleTouchStart(e) {
-    e.preventDefault();
-    if (isDragging) return;
     
-    const touch = e.touches[0];
-    const rect = this.getBoundingClientRect();
+    // Configura il fantasma
+    ghost.style.display = 'block';
+    ghost.style.backgroundColor = this.style.backgroundColor;
+    ghost.style.left = startX + 'px';
+    ghost.style.top = startY + 'px';
     
-    touchOffset.x = touch.clientX - rect.left;
-    touchOffset.y = touch.clientY - rect.top;
-    
-    draggedElement = this;
-    this.classList.add("dragging");
+    // Aggiungi classe dragging
+    this.classList.add('dragging');
     isDragging = true;
     
-    // Crea un elemento fantasma per il feedback visivo
-    this.style.position = 'relative';
-    this.style.zIndex = '1000';
+    // Aggiungi listener per il movimento
+    if (e.type === 'mousedown') {
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('mouseup', onDragEnd);
+    } else {
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('touchend', onDragEnd);
+        document.addEventListener('touchcancel', onDragEnd);
+    }
 }
 
-function handleTouchMove(e) {
-    e.preventDefault();
+function onDragMove(e) {
     if (!isDragging || !draggedElement) return;
     
-    const touch = e.touches[0];
-    
-    // Evidenzia le zone di drop sotto il dito
-    const dropZones = document.querySelectorAll('.drop-zone:not(.filled)');
-    let dropOver = false;
-    
-    dropZones.forEach(zone => {
-        const rect = zone.getBoundingClientRect();
-        if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
-            touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
-            zone.classList.add('drop-over');
-            dropOver = true;
-        } else {
-            zone.classList.remove('drop-over');
-        }
-    });
-}
-
-function handleTouchEnd(e) {
     e.preventDefault();
-    if (!isDragging || !draggedElement) return;
     
-    // Trova la zona di drop sotto il dito
-    const touch = e.changedTouches[0];
+    let clientX, clientY;
+    
+    if (e.type === 'mousemove') {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    } else {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    }
+    
+    // Muovi il fantasma
+    ghost.style.left = clientX + 'px';
+    ghost.style.top = clientY + 'px';
+    
+    // Controlla se siamo sopra una zona di drop
     const dropZones = document.querySelectorAll('.drop-zone:not(.filled)');
+    let foundDropZone = null;
     
     for (let zone of dropZones) {
         const rect = zone.getBoundingClientRect();
-        if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
-            touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
-            handleDrop(zone);
+        if (clientX >= rect.left && clientX <= rect.right &&
+            clientY >= rect.top && clientY <= rect.bottom) {
+            foundDropZone = zone;
             break;
         }
     }
     
-    // Pulisci lo stato di drag
-    if (draggedElement) {
-        draggedElement.classList.remove("dragging");
-        draggedElement.style.position = '';
-        draggedElement.style.zIndex = '';
+    // Gestisci l'evidenziazione delle zone di drop
+    dropZones.forEach(zone => {
+        if (zone === foundDropZone) {
+            zone.classList.add('drop-over');
+        } else {
+            zone.classList.remove('drop-over');
+        }
+    });
+    
+    currentDropZone = foundDropZone;
+}
+
+function onDragEnd(e) {
+    e.preventDefault();
+    
+    // Rimuovi i listener
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', onDragEnd);
+    document.removeEventListener('touchmove', onDragMove);
+    document.removeEventListener('touchend', onDragEnd);
+    document.removeEventListener('touchcancel', onDragEnd);
+    
+    // Se abbiamo una zona di drop corrente, gestisci il drop
+    if (currentDropZone && draggedElement) {
+        handleDrop(currentDropZone);
     }
     
-    // Rimuovi gli effetti hover
+    // Pulisci
+    endDrag();
+}
+
+function endDrag() {
+    if (draggedElement) {
+        draggedElement.classList.remove('dragging');
+    }
+    
+    // Nascondi fantasma
+    ghost.style.display = 'none';
+    
+    // Rimuovi evidenziazioni
     document.querySelectorAll('.drop-zone').forEach(zone => {
         zone.classList.remove('drop-over');
+        zone.classList.remove('wrong-drop');
     });
     
     draggedElement = null;
     isDragging = false;
+    currentDropZone = null;
 }
 
 function handleDrop(target) {
-    if (!draggedElement) return;
+    if (!draggedElement || target.classList.contains('filled')) return;
 
     const draggedName = draggedElement.dataset.name;
     const draggedColor = draggedElement.dataset.color;
 
-    // Verifica se il colore corrisponde alla zona di drop
-    if (draggedName === target.dataset.name && !target.classList.contains("filled")) {
-        
-        // Riempie la zona di drop
+    // Verifica se il colore corrisponde
+    if (draggedName === target.dataset.name) {
+        // Drop corretto
         target.style.backgroundColor = draggedColor;
         target.innerText = draggedName;
-        target.classList.add("filled");
+        target.classList.add('filled');
         
-        // Rimuove il colore trascinato
         draggedElement.remove();
         correct++;
 
-        // Verifica se il livello è completato
         if (correct === total) {
             showStars();
             launchConfetti();
         }
-
     } else {
+        // Drop errato
         errors++;
-        // Feedback visivo per errore
-        target.style.transform = 'scale(0.95)';
-        target.style.borderColor = '#FF4444';
+        target.classList.add('wrong-drop');
         setTimeout(() => {
-            target.style.transform = '';
-            target.style.borderColor = '';
+            target.classList.remove('wrong-drop');
+        }, 300);
+        
+        // Rimbalzo del colore
+        draggedElement.style.transform = 'scale(1)';
+        setTimeout(() => {
+            if (draggedElement) {
+                draggedElement.style.transform = '';
+            }
         }, 200);
     }
-
-    // Pulisci lo stato di drag
-    draggedElement.classList.remove("dragging");
-    draggedElement = null;
-    isDragging = false;
-    
-    // Rimuovi gli effetti hover
-    document.querySelectorAll('.drop-zone').forEach(zone => {
-        zone.classList.remove('drop-over');
-    });
 }
 
 function showStars() {
@@ -470,7 +503,6 @@ function showStars() {
     document.getElementById("stars").innerText = "⭐".repeat(starCount);
 }
 
-// Confetti migliorato
 function launchConfetti() {
     const canvas = document.getElementById("confetti");
     const ctx = canvas.getContext("2d");
@@ -480,18 +512,15 @@ function launchConfetti() {
 
     const pieces = [];
     const gravity = 0.15;
-    const friction = 0.999;
     const colors = ['#FF4444', '#44FF44', '#4444FF', '#FFFF44', '#FF44FF', '#44FFFF'];
 
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 150; i++) {
         pieces.push({
-            x: canvas.width / 2 + (Math.random() - 0.5) * 200,
-            y: canvas.height / 2 + (Math.random() - 0.5) * 200,
-            size: Math.random() * 12 + 4,
-            velocityX: (Math.random() - 0.5) * 8,
-            velocityY: (Math.random() - 0.5) * 8 - 5,
-            rotation: Math.random() * 360,
-            rotationSpeed: (Math.random() - 0.5) * 15,
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            size: Math.random() * 10 + 5,
+            velocityX: (Math.random() - 0.5) * 12,
+            velocityY: (Math.random() - 0.5) * 12 - 5,
             color: colors[Math.floor(Math.random() * colors.length)],
             shape: Math.random() > 0.5 ? "rect" : "circle"
         });
@@ -505,27 +534,18 @@ function launchConfetti() {
 
         pieces.forEach(p => {
             p.velocityY += gravity;
-            p.velocityX *= friction;
-            p.velocityY *= friction;
-
             p.x += p.velocityX;
             p.y += p.velocityY;
-            p.rotation += p.rotationSpeed;
 
-            ctx.save();
-            ctx.translate(p.x, p.y);
-            ctx.rotate(p.rotation * Math.PI / 180);
             ctx.fillStyle = p.color;
-
+            
             if (p.shape === "rect") {
-                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
             } else {
                 ctx.beginPath();
-                ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+                ctx.arc(p.x, p.y, p.size/2, 0, Math.PI * 2);
                 ctx.fill();
             }
-
-            ctx.restore();
         });
 
         if (Date.now() - startTime < 3000) {
@@ -540,8 +560,7 @@ function launchConfetti() {
 
 // Previeni il comportamento di default del browser per il drag
 document.addEventListener('dragstart', (e) => e.preventDefault());
-document.addEventListener('drop', (e) => e.preventDefault());
-document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // Avvia con livello facile
 window.onload = () => startGame('facile');
