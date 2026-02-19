@@ -2,8 +2,8 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gioco dei Colori</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gioco dei Colori - Drag & Drop Touch</title>
 
 <style>
 body {
@@ -11,17 +11,47 @@ body {
     font-family: 'Comic Sans MS', cursive, sans-serif;
     background: linear-gradient(135deg, #ffecd2, #fcb69f);
     text-align: center;
+    padding-bottom: 40px;
     overflow-x: hidden;
+    min-height: 100vh;
 }
 
-h1 { margin-top: 20px; }
+h1 {
+    margin-top: 20px;
+    color: #444;
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
+}
+
+.levels {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px;
+}
 
 .levels button {
-    padding: 8px 14px;
-    margin: 5px;
-    border-radius: 20px;
+    padding: 12px 20px;
+    margin: 4px;
     border: none;
+    border-radius: 30px;
+    font-size: clamp(14px, 4vw, 16px);
+    font-weight: bold;
     cursor: pointer;
+    background: white;
+    transition: all 0.3s;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    touch-action: manipulation;
+    min-width: 80px;
+}
+
+.levels button:hover {
+    transform: scale(1.05);
+    background: #f0f0f0;
+}
+
+.levels button:active {
+    transform: scale(0.95);
 }
 
 .game-container {
@@ -29,7 +59,8 @@ h1 { margin-top: 20px; }
     flex-direction: column;
     align-items: center;
     gap: 30px;
-    margin-top: 30px;
+    margin-top: 20px;
+    padding: 0 10px;
 }
 
 .colors, .names {
@@ -37,21 +68,35 @@ h1 { margin-top: 20px; }
     flex-wrap: wrap;
     gap: 15px;
     justify-content: center;
+    width: 100%;
+    max-width: 800px;
 }
 
 .color-box {
-    width: 80px;
-    height: 80px;
+    width: min(80px, 20vw);
+    height: min(80px, 20vw);
     border-radius: 20px;
+    cursor: pointer;
     box-shadow: 0 6px 12px rgba(0,0,0,0.2);
-    cursor: grab;
-    position: relative;
+    transition: transform 0.2s;
     touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.color-box:active {
+    transform: scale(0.95);
+}
+
+.color-box.dragging {
+    opacity: 0.7;
+    transform: scale(0.9);
+    position: relative;
+    z-index: 1000;
 }
 
 .drop-zone {
-    width: 100px;
-    height: 100px;
+    width: min(120px, 30vw);
+    height: min(100px, 25vw);
     border: 3px dashed #555;
     border-radius: 20px;
     display: flex;
@@ -59,24 +104,70 @@ h1 { margin-top: 20px; }
     justify-content: center;
     font-weight: bold;
     background: white;
+    transition: all 0.3s;
+    padding: 10px;
     text-align: center;
+    font-size: clamp(12px, 3vw, 14px);
+    word-break: break-word;
+    touch-action: none;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
 .drop-zone.filled {
     color: white;
     border: none;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
-#stars { font-size: 28px; margin-top: 10px; }
+.drop-zone.drop-over {
+    transform: scale(1.05);
+    border-color: #4CAF50;
+    background: rgba(76, 175, 80, 0.1);
+}
+
+#message {
+    margin-top: 20px;
+    font-size: clamp(18px, 5vw, 24px);
+    font-weight: bold;
+    min-height: 40px;
+}
+
+#stars {
+    font-size: clamp(24px, 6vw, 32px);
+    margin-top: 10px;
+    letter-spacing: 5px;
+}
 
 canvas {
     position: fixed;
     top: 0;
     left: 0;
     pointer-events: none;
+    z-index: 9999;
+}
+
+/* Istruzioni per il drag su mobile */
+.drag-instruction {
+    background: rgba(255,255,255,0.5);
+    padding: 8px 15px;
+    border-radius: 30px;
+    font-size: 14px;
+    margin-bottom: 10px;
+    display: inline-block;
+}
+
+@media (max-width: 600px) {
+    .game-container {
+        gap: 20px;
+    }
+    
+    .colors, .names {
+        gap: 10px;
+    }
 }
 </style>
 </head>
+
 <body>
 
 <h1>🎨 Indovina il Colore!</h1>
@@ -89,197 +180,298 @@ canvas {
     <button onclick="startGame('super')">Super 🔥</button>
 </div>
 
+<div class="drag-instruction">
+    👆 Premi e trascina i colori sulle parole
+</div>
+
 <div class="game-container">
     <div class="colors" id="colors"></div>
     <div class="names" id="names"></div>
 </div>
 
+<div id="message"></div>
 <div id="stars"></div>
+
 <canvas id="confetti"></canvas>
 
 <script>
-
-/* ===== LIVELLI ===== */
-
 const levels = {
     facile: [
-        {name: "Rosso", value: "red"},
-        {name: "Blu", value: "blue"},
-        {name: "Verde", value: "green"}
+        {name: "Rosso", value: "#FF4444"},
+        {name: "Blu", value: "#4444FF"},
+        {name: "Verde", value: "#44FF44"}
     ],
     medio: [
-        {name: "Giallo", value: "yellow"},
-        {name: "Arancione", value: "orange"},
-        {name: "Viola", value: "purple"},
-        {name: "Rosa", value: "pink"},
-        {name: "Marrone", value: "brown"}
+        {name: "Rosso", value: "#FF4444"},
+        {name: "Blu", value: "#4444FF"},
+        {name: "Verde", value: "#44FF44"},
+        {name: "Giallo", value: "#FFFF44"},
+        {name: "Arancione", value: "#FF8844"}
     ],
     difficile: [
         {name: "Ciano", value: "#00FFFF"},
         {name: "Beige", value: "#F5F5DC"},
         {name: "Ocra", value: "#CC7722"},
         {name: "Lilla", value: "#C8A2C8"},
+        {name: "Turchese", value: "#40E0D0"},
+        {name: "Salmone", value: "#FA8072"},
         {name: "Indaco", value: "#4B0082"}
     ],
     esperto: [
         {name: "Amaranto", value: "#E52B50"},
         {name: "Avorio", value: "#FFFFF0"},
+        {name: "Chartreuse", value: "#7FFF00"},
+        {name: "Magenta", value: "#FF00FF"},
         {name: "Corallo", value: "#FF7F50"},
         {name: "Verde Smeraldo", value: "#50C878"},
-        {name: "Blu Petrolio", value: "#003366"}
+        {name: "Blu Petrolio", value: "#003366"},
+        {name: "Grigio Ardesia", value: "#708090"},
+        {name: "Ruggine", value: "#B7410E"},
+        {name: "Malva", value: "#E0B0FF"}
     ],
     super: [
         {name: "Ceruleo", value: "#2A52BE"},
         {name: "Vermiglio", value: "#E34234"},
         {name: "Zafferano", value: "#F4C430"},
+        {name: "Acquamarina", value: "#7FFFD4"},
         {name: "Prugna", value: "#8E4585"},
+        {name: "Perla", value: "#EAE0C8"},
+        {name: "Topazio", value: "#FFC87C"},
+        {name: "Giada", value: "#00A86B"},
+        {name: "Cremisi", value: "#DC143C"},
         {name: "Blu Klein", value: "#002FA7"}
     ]
 };
 
-let correct = 0;
 let total = 0;
+let correct = 0;
 let errors = 0;
-
-/* ===== START GAME ===== */
+let draggedElement = null;
+let touchOffset = { x: 0, y: 0 };
+let isDragging = false;
 
 function startGame(level) {
-
-    const colorsContainer = document.getElementById("colors");
-    const namesContainer = document.getElementById("names");
+    // Pulisci tutto
+    document.getElementById("colors").innerHTML = "";
+    document.getElementById("names").innerHTML = "";
+    document.getElementById("message").innerText = "";
     document.getElementById("stars").innerText = "";
-
-    colorsContainer.innerHTML = "";
-    namesContainer.innerHTML = "";
-
-    correct = 0;
-    errors = 0;
 
     const selected = levels[level];
     total = selected.length;
+    correct = 0;
+    errors = 0;
 
+    // Mescola le parole
     const shuffled = [...selected].sort(() => Math.random() - 0.5);
 
+    // Crea i colori (in ordine originale)
     selected.forEach(color => {
-        const box = document.createElement("div");
-        box.className = "color-box";
-        box.style.backgroundColor = color.value;
-        box.dataset.name = color.name;
-        box.dataset.color = color.value;
-
-        enableDrag(box);
-
-        colorsContainer.appendChild(box);
+        const box = createColorElement(color);
+        document.getElementById("colors").appendChild(box);
     });
 
+    // Crea le zone di drop (in ordine mescolato)
     shuffled.forEach(color => {
-        const drop = document.createElement("div");
-        drop.className = "drop-zone";
-        drop.innerText = color.name;
-        drop.dataset.name = color.name;
-
-        namesContainer.appendChild(drop);
+        const drop = createDropZone(color);
+        document.getElementById("names").appendChild(drop);
     });
 }
 
-/* ===== DRAG TOUCH & DESKTOP CUSTOM ===== */
+function createColorElement(color) {
+    const box = document.createElement("div");
+    box.classList.add("color-box");
+    box.style.backgroundColor = color.value;
+    box.dataset.name = color.name;
+    box.dataset.color = color.value;
 
-function enableDrag(element) {
+    // Eventi mouse
+    box.addEventListener("dragstart", (e) => {
+        e.preventDefault();
+        return false;
+    });
+    
+    box.addEventListener("mousedown", startDrag);
+    
+    // Eventi touch
+    box.addEventListener("touchstart", handleTouchStart, { passive: false });
+    box.addEventListener("touchmove", handleTouchMove, { passive: false });
+    box.addEventListener("touchend", handleTouchEnd);
+    box.addEventListener("touchcancel", handleTouchEnd);
 
-    let offsetX, offsetY;
+    return box;
+}
 
-    function startDrag(x, y) {
-        offsetX = x - element.getBoundingClientRect().left;
-        offsetY = y - element.getBoundingClientRect().top;
+function createDropZone(color) {
+    const drop = document.createElement("div");
+    drop.classList.add("drop-zone");
+    drop.innerText = color.name;
+    drop.dataset.name = color.name;
 
-        element.style.position = "fixed";
-        element.style.zIndex = 1000;
-    }
-
-    function moveAt(x, y) {
-        element.style.left = x - offsetX + "px";
-        element.style.top = y - offsetY + "px";
-    }
-
-    function endDrag(x, y) {
-
-        const dropTarget = document.elementFromPoint(x, y);
-
-        if (dropTarget && dropTarget.classList.contains("drop-zone")) {
-
-            if (dropTarget.dataset.name === element.dataset.name && !dropTarget.classList.contains("filled")) {
-
-                dropTarget.style.backgroundColor = element.dataset.color;
-                dropTarget.classList.add("filled");
-                dropTarget.innerText = element.dataset.name;
-
-                element.remove();
-                correct++;
-
-                if (correct === total) finishGame();
-                return;
-            } else {
-                errors++;
-            }
-        }
-
-        element.style.position = "relative";
-        element.style.left = "0";
-        element.style.top = "0";
-        element.style.zIndex = 1;
-    }
-
-    /* MOUSE */
-    element.addEventListener("mousedown", e => {
-        startDrag(e.clientX, e.clientY);
-
-        function onMove(e) {
-            moveAt(e.clientX, e.clientY);
-        }
-
-        document.addEventListener("mousemove", onMove);
-
-        document.addEventListener("mouseup", e => {
-            document.removeEventListener("mousemove", onMove);
-            endDrag(e.clientX, e.clientY);
-        }, { once: true });
+    // Eventi mouse
+    drop.addEventListener("dragover", (e) => e.preventDefault());
+    drop.addEventListener("drop", (e) => {
+        e.preventDefault();
+        handleDrop(drop);
+    });
+    
+    drop.addEventListener("mouseup", () => handleDrop(drop));
+    
+    // Eventi touch
+    drop.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        handleDrop(drop);
     });
 
-    /* TOUCH */
-    element.addEventListener("touchstart", e => {
-        const touch = e.touches[0];
-        startDrag(touch.clientX, touch.clientY);
+    return drop;
+}
 
-        function onTouchMove(e) {
-            const t = e.touches[0];
-            moveAt(t.clientX, t.clientY);
+// Gestione drag con mouse
+function startDrag(e) {
+    e.preventDefault();
+    if (isDragging) return;
+    
+    draggedElement = this;
+    this.classList.add("dragging");
+    isDragging = true;
+}
+
+// Gestione touch
+function handleTouchStart(e) {
+    e.preventDefault();
+    if (isDragging) return;
+    
+    const touch = e.touches[0];
+    const rect = this.getBoundingClientRect();
+    
+    touchOffset.x = touch.clientX - rect.left;
+    touchOffset.y = touch.clientY - rect.top;
+    
+    draggedElement = this;
+    this.classList.add("dragging");
+    isDragging = true;
+    
+    // Crea un elemento fantasma per il feedback visivo
+    this.style.position = 'relative';
+    this.style.zIndex = '1000';
+}
+
+function handleTouchMove(e) {
+    e.preventDefault();
+    if (!isDragging || !draggedElement) return;
+    
+    const touch = e.touches[0];
+    
+    // Evidenzia le zone di drop sotto il dito
+    const dropZones = document.querySelectorAll('.drop-zone:not(.filled)');
+    let dropOver = false;
+    
+    dropZones.forEach(zone => {
+        const rect = zone.getBoundingClientRect();
+        if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+            touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+            zone.classList.add('drop-over');
+            dropOver = true;
+        } else {
+            zone.classList.remove('drop-over');
         }
-
-        document.addEventListener("touchmove", onTouchMove);
-
-        document.addEventListener("touchend", e => {
-            document.removeEventListener("touchmove", onTouchMove);
-            const t = e.changedTouches[0];
-            endDrag(t.clientX, t.clientY);
-        }, { once: true });
-
     });
 }
 
-/* ===== STELLE + CONFETTI ===== */
-
-function finishGame() {
-
-    let stars = errors === 0 ? 3 : errors <= 3 ? 2 : 1;
-    document.getElementById("stars").innerText = "⭐".repeat(stars);
-
-    launchConfetti();
+function handleTouchEnd(e) {
+    e.preventDefault();
+    if (!isDragging || !draggedElement) return;
+    
+    // Trova la zona di drop sotto il dito
+    const touch = e.changedTouches[0];
+    const dropZones = document.querySelectorAll('.drop-zone:not(.filled)');
+    
+    for (let zone of dropZones) {
+        const rect = zone.getBoundingClientRect();
+        if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+            touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+            handleDrop(zone);
+            break;
+        }
+    }
+    
+    // Pulisci lo stato di drag
+    if (draggedElement) {
+        draggedElement.classList.remove("dragging");
+        draggedElement.style.position = '';
+        draggedElement.style.zIndex = '';
+    }
+    
+    // Rimuovi gli effetti hover
+    document.querySelectorAll('.drop-zone').forEach(zone => {
+        zone.classList.remove('drop-over');
+    });
+    
+    draggedElement = null;
+    isDragging = false;
 }
 
-/* CONFETTI REALISTICI */
+function handleDrop(target) {
+    if (!draggedElement) return;
 
+    const draggedName = draggedElement.dataset.name;
+    const draggedColor = draggedElement.dataset.color;
+
+    // Verifica se il colore corrisponde alla zona di drop
+    if (draggedName === target.dataset.name && !target.classList.contains("filled")) {
+        
+        // Riempie la zona di drop
+        target.style.backgroundColor = draggedColor;
+        target.innerText = draggedName;
+        target.classList.add("filled");
+        
+        // Rimuove il colore trascinato
+        draggedElement.remove();
+        correct++;
+
+        // Verifica se il livello è completato
+        if (correct === total) {
+            showStars();
+            launchConfetti();
+        }
+
+    } else {
+        errors++;
+        // Feedback visivo per errore
+        target.style.transform = 'scale(0.95)';
+        target.style.borderColor = '#FF4444';
+        setTimeout(() => {
+            target.style.transform = '';
+            target.style.borderColor = '';
+        }, 200);
+    }
+
+    // Pulisci lo stato di drag
+    draggedElement.classList.remove("dragging");
+    draggedElement = null;
+    isDragging = false;
+    
+    // Rimuovi gli effetti hover
+    document.querySelectorAll('.drop-zone').forEach(zone => {
+        zone.classList.remove('drop-over');
+    });
+}
+
+function showStars() {
+    let starCount = errors === 0 ? 3 : errors <= 3 ? 2 : 1;
+    
+    const messages = {
+        3: "🎉 PERFETTO! 🌟🌟🌟",
+        2: "👍 BRAVO! 🌟🌟",
+        1: "💪 PUOI FARE MEGLIO! 🌟"
+    };
+    
+    document.getElementById("message").innerText = messages[starCount] || "🎉 Livello completato!";
+    document.getElementById("stars").innerText = "⭐".repeat(starCount);
+}
+
+// Confetti migliorato
 function launchConfetti() {
-
     const canvas = document.getElementById("confetti");
     const ctx = canvas.getContext("2d");
 
@@ -288,27 +480,34 @@ function launchConfetti() {
 
     const pieces = [];
     const gravity = 0.15;
+    const friction = 0.999;
+    const colors = ['#FF4444', '#44FF44', '#4444FF', '#FFFF44', '#FF44FF', '#44FFFF'];
 
-    for (let i = 0; i < 180; i++) {
+    for (let i = 0; i < 200; i++) {
         pieces.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * -canvas.height,
-            size: Math.random() * 10 + 5,
-            velocityX: (Math.random() - 0.5) * 6,
-            velocityY: Math.random() * 3 + 2,
+            x: canvas.width / 2 + (Math.random() - 0.5) * 200,
+            y: canvas.height / 2 + (Math.random() - 0.5) * 200,
+            size: Math.random() * 12 + 4,
+            velocityX: (Math.random() - 0.5) * 8,
+            velocityY: (Math.random() - 0.5) * 8 - 5,
             rotation: Math.random() * 360,
-            rotationSpeed: (Math.random() - 0.5) * 10,
-            color: `hsl(${Math.random() * 360}, 100%, 50%)`
+            rotationSpeed: (Math.random() - 0.5) * 15,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            shape: Math.random() > 0.5 ? "rect" : "circle"
         });
     }
 
     let animation;
+    let startTime = Date.now();
 
     function update() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         pieces.forEach(p => {
             p.velocityY += gravity;
+            p.velocityX *= friction;
+            p.velocityY *= friction;
+
             p.x += p.velocityX;
             p.y += p.velocityY;
             p.rotation += p.rotationSpeed;
@@ -317,21 +516,36 @@ function launchConfetti() {
             ctx.translate(p.x, p.y);
             ctx.rotate(p.rotation * Math.PI / 180);
             ctx.fillStyle = p.color;
-            ctx.fillRect(0, 0, p.size, p.size * 0.6);
+
+            if (p.shape === "rect") {
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+            } else {
+                ctx.beginPath();
+                ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
             ctx.restore();
         });
 
-        animation = requestAnimationFrame(update);
+        if (Date.now() - startTime < 3000) {
+            animation = requestAnimationFrame(update);
+        } else {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
     }
 
     update();
-
-    setTimeout(() => {
-        cancelAnimationFrame(animation);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }, 4000);
 }
 
+// Previeni il comportamento di default del browser per il drag
+document.addEventListener('dragstart', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => e.preventDefault());
+document.addEventListener('dragover', (e) => e.preventDefault());
+
+// Avvia con livello facile
+window.onload = () => startGame('facile');
 </script>
+
 </body>
 </html>
