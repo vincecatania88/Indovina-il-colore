@@ -4,9 +4,79 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gioco dei Colori</title>
-<link rel="stylesheet" href="./style.css">
-</head>
 
+<style>
+body {
+    margin: 0;
+    font-family: 'Comic Sans MS', cursive, sans-serif;
+    background: linear-gradient(135deg, #ffecd2, #fcb69f);
+    text-align: center;
+    overflow-x: hidden;
+}
+
+h1 { margin-top: 20px; }
+
+.levels button {
+    padding: 8px 14px;
+    margin: 5px;
+    border-radius: 20px;
+    border: none;
+    cursor: pointer;
+}
+
+.game-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 30px;
+    margin-top: 30px;
+}
+
+.colors, .names {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+}
+
+.color-box {
+    width: 80px;
+    height: 80px;
+    border-radius: 20px;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+    cursor: grab;
+    position: relative;
+    touch-action: none;
+}
+
+.drop-zone {
+    width: 100px;
+    height: 100px;
+    border: 3px dashed #555;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    background: white;
+    text-align: center;
+}
+
+.drop-zone.filled {
+    color: white;
+    border: none;
+}
+
+#stars { font-size: 28px; margin-top: 10px; }
+
+canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+</style>
+</head>
 <body>
 
 <h1>🎨 Indovina il Colore!</h1>
@@ -24,11 +94,244 @@
     <div class="names" id="names"></div>
 </div>
 
-<div id="message"></div>
 <div id="stars"></div>
-
 <canvas id="confetti"></canvas>
-<script src="./script.js"></script>
 
+<script>
+
+/* ===== LIVELLI ===== */
+
+const levels = {
+    facile: [
+        {name: "Rosso", value: "red"},
+        {name: "Blu", value: "blue"},
+        {name: "Verde", value: "green"}
+    ],
+    medio: [
+        {name: "Giallo", value: "yellow"},
+        {name: "Arancione", value: "orange"},
+        {name: "Viola", value: "purple"},
+        {name: "Rosa", value: "pink"},
+        {name: "Marrone", value: "brown"}
+    ],
+    difficile: [
+        {name: "Ciano", value: "#00FFFF"},
+        {name: "Beige", value: "#F5F5DC"},
+        {name: "Ocra", value: "#CC7722"},
+        {name: "Lilla", value: "#C8A2C8"},
+        {name: "Indaco", value: "#4B0082"}
+    ],
+    esperto: [
+        {name: "Amaranto", value: "#E52B50"},
+        {name: "Avorio", value: "#FFFFF0"},
+        {name: "Corallo", value: "#FF7F50"},
+        {name: "Verde Smeraldo", value: "#50C878"},
+        {name: "Blu Petrolio", value: "#003366"}
+    ],
+    super: [
+        {name: "Ceruleo", value: "#2A52BE"},
+        {name: "Vermiglio", value: "#E34234"},
+        {name: "Zafferano", value: "#F4C430"},
+        {name: "Prugna", value: "#8E4585"},
+        {name: "Blu Klein", value: "#002FA7"}
+    ]
+};
+
+let correct = 0;
+let total = 0;
+let errors = 0;
+
+/* ===== START GAME ===== */
+
+function startGame(level) {
+
+    const colorsContainer = document.getElementById("colors");
+    const namesContainer = document.getElementById("names");
+    document.getElementById("stars").innerText = "";
+
+    colorsContainer.innerHTML = "";
+    namesContainer.innerHTML = "";
+
+    correct = 0;
+    errors = 0;
+
+    const selected = levels[level];
+    total = selected.length;
+
+    const shuffled = [...selected].sort(() => Math.random() - 0.5);
+
+    selected.forEach(color => {
+        const box = document.createElement("div");
+        box.className = "color-box";
+        box.style.backgroundColor = color.value;
+        box.dataset.name = color.name;
+        box.dataset.color = color.value;
+
+        enableDrag(box);
+
+        colorsContainer.appendChild(box);
+    });
+
+    shuffled.forEach(color => {
+        const drop = document.createElement("div");
+        drop.className = "drop-zone";
+        drop.innerText = color.name;
+        drop.dataset.name = color.name;
+
+        namesContainer.appendChild(drop);
+    });
+}
+
+/* ===== DRAG TOUCH & DESKTOP CUSTOM ===== */
+
+function enableDrag(element) {
+
+    let offsetX, offsetY;
+
+    function startDrag(x, y) {
+        offsetX = x - element.getBoundingClientRect().left;
+        offsetY = y - element.getBoundingClientRect().top;
+
+        element.style.position = "fixed";
+        element.style.zIndex = 1000;
+    }
+
+    function moveAt(x, y) {
+        element.style.left = x - offsetX + "px";
+        element.style.top = y - offsetY + "px";
+    }
+
+    function endDrag(x, y) {
+
+        const dropTarget = document.elementFromPoint(x, y);
+
+        if (dropTarget && dropTarget.classList.contains("drop-zone")) {
+
+            if (dropTarget.dataset.name === element.dataset.name && !dropTarget.classList.contains("filled")) {
+
+                dropTarget.style.backgroundColor = element.dataset.color;
+                dropTarget.classList.add("filled");
+                dropTarget.innerText = element.dataset.name;
+
+                element.remove();
+                correct++;
+
+                if (correct === total) finishGame();
+                return;
+            } else {
+                errors++;
+            }
+        }
+
+        element.style.position = "relative";
+        element.style.left = "0";
+        element.style.top = "0";
+        element.style.zIndex = 1;
+    }
+
+    /* MOUSE */
+    element.addEventListener("mousedown", e => {
+        startDrag(e.clientX, e.clientY);
+
+        function onMove(e) {
+            moveAt(e.clientX, e.clientY);
+        }
+
+        document.addEventListener("mousemove", onMove);
+
+        document.addEventListener("mouseup", e => {
+            document.removeEventListener("mousemove", onMove);
+            endDrag(e.clientX, e.clientY);
+        }, { once: true });
+    });
+
+    /* TOUCH */
+    element.addEventListener("touchstart", e => {
+        const touch = e.touches[0];
+        startDrag(touch.clientX, touch.clientY);
+
+        function onTouchMove(e) {
+            const t = e.touches[0];
+            moveAt(t.clientX, t.clientY);
+        }
+
+        document.addEventListener("touchmove", onTouchMove);
+
+        document.addEventListener("touchend", e => {
+            document.removeEventListener("touchmove", onTouchMove);
+            const t = e.changedTouches[0];
+            endDrag(t.clientX, t.clientY);
+        }, { once: true });
+
+    });
+}
+
+/* ===== STELLE + CONFETTI ===== */
+
+function finishGame() {
+
+    let stars = errors === 0 ? 3 : errors <= 3 ? 2 : 1;
+    document.getElementById("stars").innerText = "⭐".repeat(stars);
+
+    launchConfetti();
+}
+
+/* CONFETTI REALISTICI */
+
+function launchConfetti() {
+
+    const canvas = document.getElementById("confetti");
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const pieces = [];
+    const gravity = 0.15;
+
+    for (let i = 0; i < 180; i++) {
+        pieces.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * -canvas.height,
+            size: Math.random() * 10 + 5,
+            velocityX: (Math.random() - 0.5) * 6,
+            velocityY: Math.random() * 3 + 2,
+            rotation: Math.random() * 360,
+            rotationSpeed: (Math.random() - 0.5) * 10,
+            color: `hsl(${Math.random() * 360}, 100%, 50%)`
+        });
+    }
+
+    let animation;
+
+    function update() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        pieces.forEach(p => {
+            p.velocityY += gravity;
+            p.x += p.velocityX;
+            p.y += p.velocityY;
+            p.rotation += p.rotationSpeed;
+
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation * Math.PI / 180);
+            ctx.fillStyle = p.color;
+            ctx.fillRect(0, 0, p.size, p.size * 0.6);
+            ctx.restore();
+        });
+
+        animation = requestAnimationFrame(update);
+    }
+
+    update();
+
+    setTimeout(() => {
+        cancelAnimationFrame(animation);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }, 4000);
+}
+
+</script>
 </body>
 </html>
