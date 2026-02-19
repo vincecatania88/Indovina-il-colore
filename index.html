@@ -85,8 +85,7 @@ h1 {
 }
 
 .color-box.dragging {
-    opacity: 0.5;
-    transform: scale(0.9);
+    opacity: 0.3;
 }
 
 .drop-zone {
@@ -99,7 +98,7 @@ h1 {
     justify-content: center;
     font-weight: bold;
     background: white;
-    transition: all 0.3s;
+    transition: all 0.2s;
     padding: 10px;
     text-align: center;
     font-size: clamp(12px, 3vw, 14px);
@@ -119,12 +118,13 @@ h1 {
 .drop-zone.drop-over {
     transform: scale(1.05);
     border-color: #4CAF50;
-    background: rgba(76, 175, 80, 0.1);
+    background: rgba(76, 175, 80, 0.2);
+    border-width: 4px;
 }
 
 .drop-zone.wrong-drop {
     border-color: #FF4444;
-    background: rgba(255, 68, 68, 0.1);
+    background: rgba(255, 68, 68, 0.2);
     transform: scale(0.95);
 }
 
@@ -138,7 +138,8 @@ h1 {
     z-index: 10000;
     box-shadow: 0 10px 20px rgba(0,0,0,0.3);
     transform: translate(-50%, -50%);
-    opacity: 0.8;
+    opacity: 0.9;
+    transition: none;
 }
 
 #message {
@@ -267,9 +268,9 @@ let correct = 0;
 let errors = 0;
 let draggedElement = null;
 let isDragging = false;
-let currentDropZone = null;
 let ghost = document.getElementById('dragGhost');
-let startX, startY;
+let dropZones = [];
+let lastDropTarget = null;
 
 function startGame(level) {
     document.getElementById("colors").innerHTML = "";
@@ -277,7 +278,6 @@ function startGame(level) {
     document.getElementById("message").innerText = "";
     document.getElementById("stars").innerText = "";
     
-    // Nascondi il fantasma
     ghost.style.display = 'none';
 
     const selected = levels[level];
@@ -299,6 +299,9 @@ function startGame(level) {
         const drop = createDropZone(color);
         document.getElementById("names").appendChild(drop);
     });
+    
+    // Aggiorna la lista delle zone di drop
+    updateDropZones();
 }
 
 function createColorElement(color) {
@@ -310,12 +313,9 @@ function createColorElement(color) {
 
     // Eventi mouse
     box.addEventListener("mousedown", startDrag);
-    box.addEventListener("mouseup", endDrag);
     
     // Eventi touch
     box.addEventListener("touchstart", startDrag, { passive: false });
-    box.addEventListener("touchend", endDrag, { passive: false });
-    box.addEventListener("touchcancel", endDrag, { passive: false });
 
     return box;
 }
@@ -326,48 +326,51 @@ function createDropZone(color) {
     drop.innerText = color.name;
     drop.dataset.name = color.name;
     
-    // Eventi mouse/touch per il drop
-    drop.addEventListener("mouseup", () => handleDrop(drop));
-    drop.addEventListener("touchend", (e) => {
-        e.preventDefault();
-        handleDrop(drop);
-    });
-
+    // Non aggiungere event listener qui - gestiamo tutto tramite il documento
+    
     return drop;
+}
+
+function updateDropZones() {
+    dropZones = Array.from(document.querySelectorAll('.drop-zone:not(.filled)'));
 }
 
 function startDrag(e) {
     e.preventDefault();
     
-    if (e.type === 'mousedown') {
-        startX = e.clientX;
-        startY = e.clientY;
-    } else {
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-    }
+    // Se stiamo già trascinando, ignora
+    if (isDragging) return;
     
+    // Salva l'elemento trascinato
     draggedElement = this;
+    
+    // Ottieni le coordinate iniziali
+    let clientX, clientY;
+    if (e.type === 'mousedown') {
+        clientX = e.clientX;
+        clientY = e.clientY;
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('mouseup', onDragEnd);
+    } else {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('touchend', onDragEnd);
+        document.addEventListener('touchcancel', onDragEnd);
+    }
     
     // Configura il fantasma
     ghost.style.display = 'block';
     ghost.style.backgroundColor = this.style.backgroundColor;
-    ghost.style.left = startX + 'px';
-    ghost.style.top = startY + 'px';
+    ghost.style.left = clientX + 'px';
+    ghost.style.top = clientY + 'px';
     
     // Aggiungi classe dragging
     this.classList.add('dragging');
     isDragging = true;
     
-    // Aggiungi listener per il movimento
-    if (e.type === 'mousedown') {
-        document.addEventListener('mousemove', onDragMove);
-        document.addEventListener('mouseup', onDragEnd);
-    } else {
-        document.addEventListener('touchmove', onDragMove, { passive: false });
-        document.addEventListener('touchend', onDragEnd);
-        document.addEventListener('touchcancel', onDragEnd);
-    }
+    // Aggiorna le zone di drop disponibili
+    updateDropZones();
 }
 
 function onDragMove(e) {
@@ -389,29 +392,27 @@ function onDragMove(e) {
     ghost.style.left = clientX + 'px';
     ghost.style.top = clientY + 'px';
     
-    // Controlla se siamo sopra una zona di drop
-    const dropZones = document.querySelectorAll('.drop-zone:not(.filled)');
-    let foundDropZone = null;
+    // Trova la zona di drop sotto il dito/mouse
+    const elementsAtPoint = document.elementsFromPoint(clientX, clientY);
+    let dropZone = null;
     
-    for (let zone of dropZones) {
-        const rect = zone.getBoundingClientRect();
-        if (clientX >= rect.left && clientX <= rect.right &&
-            clientY >= rect.top && clientY <= rect.bottom) {
-            foundDropZone = zone;
+    for (let element of elementsAtPoint) {
+        if (element.classList && element.classList.contains('drop-zone') && !element.classList.contains('filled')) {
+            dropZone = element;
             break;
         }
     }
     
-    // Gestisci l'evidenziazione delle zone di drop
+    // Aggiorna le evidenziazioni
     dropZones.forEach(zone => {
-        if (zone === foundDropZone) {
+        if (zone === dropZone) {
             zone.classList.add('drop-over');
         } else {
             zone.classList.remove('drop-over');
         }
     });
     
-    currentDropZone = foundDropZone;
+    lastDropTarget = dropZone;
 }
 
 function onDragEnd(e) {
@@ -424,37 +425,35 @@ function onDragEnd(e) {
     document.removeEventListener('touchend', onDragEnd);
     document.removeEventListener('touchcancel', onDragEnd);
     
-    // Se abbiamo una zona di drop corrente, gestisci il drop
-    if (currentDropZone && draggedElement) {
-        handleDrop(currentDropZone);
+    // Ottieni le coordinate finali per il touch
+    if (e.type === 'touchend' && e.changedTouches) {
+        const touch = e.changedTouches[0];
+        const elementsAtPoint = document.elementsFromPoint(touch.clientX, touch.clientY);
+        
+        // Cerca una zona di drop valida
+        for (let element of elementsAtPoint) {
+            if (element.classList && element.classList.contains('drop-zone') && !element.classList.contains('filled')) {
+                lastDropTarget = element;
+                break;
+            }
+        }
+    }
+    
+    // Gestisci il drop se abbiamo un target valido
+    if (lastDropTarget && draggedElement) {
+        handleDrop(lastDropTarget);
+    } else if (draggedElement) {
+        // Nessun drop valido, annulla il drag
+        cancelDrag();
     }
     
     // Pulisci
     endDrag();
 }
 
-function endDrag() {
-    if (draggedElement) {
-        draggedElement.classList.remove('dragging');
-    }
-    
-    // Nascondi fantasma
-    ghost.style.display = 'none';
-    
-    // Rimuovi evidenziazioni
-    document.querySelectorAll('.drop-zone').forEach(zone => {
-        zone.classList.remove('drop-over');
-        zone.classList.remove('wrong-drop');
-    });
-    
-    draggedElement = null;
-    isDragging = false;
-    currentDropZone = null;
-}
-
 function handleDrop(target) {
-    if (!draggedElement || target.classList.contains('filled')) return;
-
+    if (!draggedElement) return;
+    
     const draggedName = draggedElement.dataset.name;
     const draggedColor = draggedElement.dataset.color;
 
@@ -480,14 +479,51 @@ function handleDrop(target) {
             target.classList.remove('wrong-drop');
         }, 300);
         
-        // Rimbalzo del colore
-        draggedElement.style.transform = 'scale(1)';
+        // Effetto di rimbalzo per il colore
+        if (draggedElement) {
+            draggedElement.style.transform = 'scale(1.1)';
+            setTimeout(() => {
+                if (draggedElement) {
+                    draggedElement.style.transform = '';
+                }
+            }, 200);
+        }
+    }
+}
+
+function cancelDrag() {
+    if (draggedElement) {
+        // Effetto di rimbalzo per annullamento
+        draggedElement.style.transform = 'scale(1.1)';
         setTimeout(() => {
             if (draggedElement) {
                 draggedElement.style.transform = '';
             }
         }, 200);
     }
+}
+
+function endDrag() {
+    // Rimuovi classe dragging
+    if (draggedElement) {
+        draggedElement.classList.remove('dragging');
+    }
+    
+    // Nascondi fantasma
+    ghost.style.display = 'none';
+    
+    // Rimuovi tutte le evidenziazioni
+    document.querySelectorAll('.drop-zone').forEach(zone => {
+        zone.classList.remove('drop-over');
+        zone.classList.remove('wrong-drop');
+    });
+    
+    draggedElement = null;
+    isDragging = false;
+    lastDropTarget = null;
+    
+    // Aggiorna le zone di drop
+    updateDropZones();
 }
 
 function showStars() {
@@ -558,7 +594,7 @@ function launchConfetti() {
     update();
 }
 
-// Previeni il comportamento di default del browser per il drag
+// Previeni il comportamento di default del browser
 document.addEventListener('dragstart', (e) => e.preventDefault());
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
