@@ -5,26 +5,40 @@ body {
     text-align: center;
     padding-bottom: 40px;
     overflow-x: hidden;
+    min-height: 100vh;
 }
 
 h1 {
     margin-top: 20px;
     color: #444;
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
+}
+
+.levels {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px;
 }
 
 .levels button {
-    padding: 10px 16px;
-    margin: 6px;
+    padding: 12px 20px;
+    margin: 4px;
     border: none;
-    border-radius: 25px;
-    font-size: 14px;
+    border-radius: 30px;
+    font-size: clamp(14px, 4vw, 16px);
+    font-weight: bold;
     cursor: pointer;
     background: white;
-    transition: 0.3s;
+    transition: all 0.3s;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    touch-action: manipulation;
+    min-width: 80px;
 }
 
-.levels button:hover {
-    transform: scale(1.1);
+.levels button:active {
+    transform: scale(0.95);
 }
 
 .game-container {
@@ -32,7 +46,8 @@ h1 {
     flex-direction: column;
     align-items: center;
     gap: 30px;
-    margin-top: 30px;
+    margin-top: 20px;
+    padding: 0 10px;
 }
 
 .colors, .names {
@@ -40,20 +55,34 @@ h1 {
     flex-wrap: wrap;
     gap: 15px;
     justify-content: center;
+    width: 100%;
+    max-width: 800px;
 }
 
 .color-box {
-    width: 80px;
-    height: 80px;
+    width: min(80px, 20vw);
+    height: min(80px, 20vw);
     border-radius: 20px;
-    cursor: grab;
+    cursor: pointer;
     box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+    transition: transform 0.2s, opacity 0.2s;
     touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.color-box:active {
+    transform: scale(0.95);
+}
+
+.color-box.dragging {
+    opacity: 0.3;
 }
 
 .drop-zone {
-    width: 100px;
-    height: 100px;
+    width: min(120px, 30vw);
+    height: min(100px, 25vw);
     border: 3px dashed #555;
     border-radius: 20px;
     display: flex;
@@ -61,25 +90,61 @@ h1 {
     justify-content: center;
     font-weight: bold;
     background: white;
-    transition: 0.3s;
-    padding: 5px;
+    transition: all 0.2s;
+    padding: 10px;
     text-align: center;
+    font-size: clamp(12px, 3vw, 14px);
+    word-break: break-word;
+    touch-action: none;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .drop-zone.filled {
     color: white;
     border: none;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.drop-zone.drop-over {
+    transform: scale(1.05);
+    border-color: #4CAF50;
+    background: rgba(76, 175, 80, 0.2);
+    border-width: 4px;
+}
+
+.drop-zone.wrong-drop {
+    border-color: #FF4444;
+    background: rgba(255, 68, 68, 0.2);
+    transform: scale(0.95);
+}
+
+/* Elemento fantasma per il drag */
+.drag-ghost {
+    position: fixed;
+    width: min(80px, 20vw);
+    height: min(80px, 20vw);
+    border-radius: 20px;
+    pointer-events: none;
+    z-index: 10000;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    transform: translate(-50%, -50%);
+    opacity: 0.9;
+    transition: none;
 }
 
 #message {
     margin-top: 20px;
-    font-size: 20px;
+    font-size: clamp(18px, 5vw, 24px);
     font-weight: bold;
+    min-height: 40px;
 }
 
 #stars {
-    font-size: 28px;
+    font-size: clamp(24px, 6vw, 32px);
     margin-top: 10px;
+    letter-spacing: 5px;
 }
 
 canvas {
@@ -87,4 +152,25 @@ canvas {
     top: 0;
     left: 0;
     pointer-events: none;
+    z-index: 9999;
+}
+
+.drag-instruction {
+    background: rgba(255,255,255,0.5);
+    padding: 8px 15px;
+    border-radius: 30px;
+    font-size: 14px;
+    margin: 10px;
+    display: inline-block;
+    backdrop-filter: blur(5px);
+}
+
+@media (max-width: 600px) {
+    .game-container {
+        gap: 20px;
+    }
+    
+    .colors, .names {
+        gap: 10px;
+    }
 }

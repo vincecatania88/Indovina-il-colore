@@ -2,9 +2,10 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gioco dei Colori</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Indovina il colore</title>
 <link rel="stylesheet" href="./style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
 </head>
 
 <body>
@@ -19,6 +20,10 @@
     <button onclick="startGame('super')">Super 🔥</button>
 </div>
 
+<div class="drag-instruction">
+    👆 Premi e trascina i colori sulle parole
+</div>
+
 <div class="game-container">
     <div class="colors" id="colors"></div>
     <div class="names" id="names"></div>
@@ -28,6 +33,10 @@
 <div id="stars"></div>
 
 <canvas id="confetti"></canvas>
+
+<!-- Elemento fantasma per il drag -->
+<div id="dragGhost" class="drag-ghost" style="display: none;"></div>
+
 <script src="./script.js"></script>
 
 </body>
